@@ -452,6 +452,27 @@ body {
   background-color: rgba(128, 128, 128, 0.05);
 }
 
+/*
+ * Blocks changed only in parts (e.g. one table row): the block itself stays unfilled and only
+ * the changed parts are marked. Must follow the row striping above.
+ */
+.diff-added-block.diff-partial,
+.diff-removed-block.diff-partial {
+  background-color: transparent;
+}
+
+.diff-pane .diff-added-part,
+.diff-pane tr.diff-added-part,
+.diff-pane tr.diff-added-part > th {
+  background-color: var(--diff-added-bg);
+}
+
+.diff-pane .diff-removed-part,
+.diff-pane tr.diff-removed-part,
+.diff-pane tr.diff-removed-part > th {
+  background-color: var(--diff-removed-bg);
+}
+
 .diff-pane img {
   max-width: 100%;
   height: auto;

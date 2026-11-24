@@ -4,8 +4,15 @@
  */
 
 import { DiffHunk } from './diffParser';
-import { createRenderer } from './markdownRenderer';
-import DiffMatchPatch from 'diff-match-patch';
+import {
+  ChangeMarks,
+  createRenderer,
+  DocumentContext,
+  escapeHtml,
+  MarkdownRenderer,
+} from './markdownRenderer';
+import { alignToMarkdownBlocks, AlignedBlock } from './blockAlignment';
+import { annotateWordChanges } from './wordDiff';
 
 export interface HighlightedDiff {
   oldHtml: string;
@@ -18,15 +25,25 @@ export interface BlockDiff {
   newLines: string[];
 }
 
-/**
- * Escape HTML special characters to prevent injection when wrapping text in spans.
- */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+/** CSS classes for one side of the diff: the whole block and a changed part inside it. */
+interface SideClasses {
+  readonly blockClass: string;
+  readonly partClass: string;
+}
+
+const REMOVED_SIDE: SideClasses = {
+  blockClass: 'diff-removed-block',
+  partClass: 'diff-removed-part',
+};
+const ADDED_SIDE: SideClasses = { blockClass: 'diff-added-block', partClass: 'diff-added-part' };
+const PARTIAL_BLOCK_CLASS = 'diff-partial';
+/** Class of the source shown for a changed fragment that renders nothing. */
+const SOURCE_CLASS = 'diff-source';
+
+/** Definitions of both documents, for rendering their blocks one by one. */
+interface DocumentContexts {
+  readonly oldDocument: DocumentContext;
+  readonly newDocument: DocumentContext;
 }
 
 /**
@@ -183,46 +200,6 @@ export function computeBlockDiffs(
 }
 
 /**
- * Compute word-level diffs between two text strings using diff-match-patch.
- *
- * Returns annotated versions of both texts where changed words are wrapped
- * in `<span class="diff-removed-word">` and `<span class="diff-added-word">` tags.
- * Unchanged text is HTML-escaped but not wrapped.
- */
-export function computeWordDiff(
-  oldText: string,
-  newText: string,
-): { oldAnnotated: string; newAnnotated: string } {
-  if (oldText === newText) {
-    return {
-      oldAnnotated: escapeHtml(oldText),
-      newAnnotated: escapeHtml(newText),
-    };
-  }
-
-  const dmp = new DiffMatchPatch();
-  const diffs = dmp.diff_main(oldText, newText);
-  dmp.diff_cleanupSemantic(diffs);
-
-  let oldAnnotated = '';
-  let newAnnotated = '';
-
-  for (const [op, text] of diffs) {
-    const escaped = escapeHtml(text);
-    if (op === DiffMatchPatch.DIFF_EQUAL) {
-      oldAnnotated += escaped;
-      newAnnotated += escaped;
-    } else if (op === DiffMatchPatch.DIFF_DELETE) {
-      oldAnnotated += `<span class="diff-removed-word">${escaped}</span>`;
-    } else if (op === DiffMatchPatch.DIFF_INSERT) {
-      newAnnotated += `<span class="diff-added-word">${escaped}</span>`;
-    }
-  }
-
-  return { oldAnnotated, newAnnotated };
-}
-
-/**
  * Wrap an HTML string in a div with the given CSS class.
  */
 function wrapBlock(html: string, className: string): string {
@@ -232,9 +209,8 @@ function wrapBlock(html: string, className: string): string {
 /**
  * Highlight differences between old and new markdown content.
  *
- * Renders both markdown versions to HTML, computes block-level diffs from the hunks,
- * then annotates changed blocks with CSS classes and applies word-level highlighting
- * within modified blocks.
+ * Computes block-level diffs from the hunks, extends them to whole markdown blocks (tables,
+ * lists, fences), renders every block and marks changed blocks, changed parts and changed words.
  *
  * Edge cases:
  * - Fully added file (empty old, non-empty new): all new content gets diff-added-block
@@ -247,253 +223,128 @@ export function highlightDiff(
   hunks: DiffHunk[],
 ): HighlightedDiff {
   const renderer = createRenderer();
-
-  // Edge case: no changes
   if (hunks.length === 0) {
-    return {
-      oldHtml: renderer.render(oldMarkdown),
-      newHtml: renderer.render(newMarkdown),
-    };
+    return { oldHtml: renderer.render(oldMarkdown), newHtml: renderer.render(newMarkdown) };
   }
 
   const oldLines = oldMarkdown.length > 0 ? oldMarkdown.split('\n') : [];
   const newLines = newMarkdown.length > 0 ? newMarkdown.split('\n') : [];
-
-  // Edge case: fully added file (old is empty)
   if (oldLines.length === 0 && newLines.length > 0) {
-    const newHtml = renderer.render(newMarkdown);
-    return {
-      oldHtml: '',
-      newHtml: wrapBlock(newHtml, 'diff-added-block'),
-    };
+    return { oldHtml: '', newHtml: wrapBlock(renderer.render(newMarkdown), ADDED_SIDE.blockClass) };
   }
-
-  // Edge case: fully deleted file (new is empty)
   if (oldLines.length > 0 && newLines.length === 0) {
-    const oldHtml = renderer.render(oldMarkdown);
     return {
-      oldHtml: wrapBlock(oldHtml, 'diff-removed-block'),
+      oldHtml: wrapBlock(renderer.render(oldMarkdown), REMOVED_SIDE.blockClass),
       newHtml: '',
     };
   }
 
-  // Compute block-level diffs
-  const blocks = computeBlockDiffs(oldLines, newLines, hunks);
-
-  const oldHtmlParts: string[] = [];
-  const newHtmlParts: string[] = [];
-
-  for (const block of blocks) {
-    const oldBlockMd = block.oldLines.join('\n');
-    const newBlockMd = block.newLines.join('\n');
-
-    switch (block.type) {
-      case 'unchanged': {
-        const oldRendered = renderer.render(oldBlockMd);
-        const newRendered = renderer.render(newBlockMd);
-        oldHtmlParts.push(oldRendered);
-        newHtmlParts.push(newRendered);
-        break;
-      }
-      case 'added': {
-        const newRendered = renderer.render(newBlockMd);
-        newHtmlParts.push(wrapBlock(newRendered, 'diff-added-block'));
-        break;
-      }
-      case 'removed': {
-        const oldRendered = renderer.render(oldBlockMd);
-        oldHtmlParts.push(wrapBlock(oldRendered, 'diff-removed-block'));
-        break;
-      }
-      case 'modified': {
-        // For modified blocks, apply word-level diffs
-        // Render the markdown first, then apply word-level annotations
-        // Since word diff operates on raw text, we render the markdown and also
-        // provide word-level annotated versions
-        const oldRendered = renderer.render(oldBlockMd);
-        const newRendered = renderer.render(newBlockMd);
-
-        // Apply word-level diff to the rendered HTML by replacing the rendered
-        // content with annotated versions within the block wrapper
-        // For modified blocks, we wrap the rendered HTML with the block class
-        // and include word-level annotations as a secondary layer
-        oldHtmlParts.push(
-          wrapBlock(
-            applyWordDiffToHtml(oldRendered, oldBlockMd, newBlockMd, 'old'),
-            'diff-removed-block',
-          ),
-        );
-        newHtmlParts.push(
-          wrapBlock(
-            applyWordDiffToHtml(newRendered, oldBlockMd, newBlockMd, 'new'),
-            'diff-added-block',
-          ),
-        );
-        break;
-      }
-    }
-  }
-
+  const contexts: DocumentContexts = {
+    oldDocument: renderer.createDocumentContext(oldMarkdown),
+    newDocument: renderer.createDocumentContext(newMarkdown),
+  };
+  const blocks = alignToMarkdownBlocks(
+    computeBlockDiffs(oldLines, newLines, hunks),
+    renderer.topLevelBlockRanges(oldMarkdown),
+    renderer.topLevelBlockRanges(newMarkdown),
+  );
+  const rendered = blocks.map((block) => renderBlock(renderer, contexts, block));
   return {
-    oldHtml: oldHtmlParts.join(''),
-    newHtml: newHtmlParts.join(''),
+    oldHtml: rendered.map((part) => part.oldHtml).join(''),
+    newHtml: rendered.map((part) => part.newHtml).join(''),
+  };
+}
+
+function renderBlock(
+  renderer: MarkdownRenderer,
+  contexts: DocumentContexts,
+  block: AlignedBlock,
+): HighlightedDiff {
+  const oldMarkdown = block.oldLines.join('\n');
+  const newMarkdown = block.newLines.join('\n');
+  switch (block.type) {
+    case 'unchanged':
+      return {
+        oldHtml: renderer.renderFragment(oldMarkdown, contexts.oldDocument),
+        newHtml: renderer.renderFragment(newMarkdown, contexts.newDocument),
+      };
+    case 'added':
+      return {
+        oldHtml: '',
+        newHtml: wrapBlock(
+          renderVisible(renderer, newMarkdown, contexts.newDocument),
+          ADDED_SIDE.blockClass,
+        ),
+      };
+    case 'removed':
+      return {
+        oldHtml: wrapBlock(
+          renderVisible(renderer, oldMarkdown, contexts.oldDocument),
+          REMOVED_SIDE.blockClass,
+        ),
+        newHtml: '',
+      };
+    case 'modified':
+      return renderModifiedBlock(renderer, contexts, block);
+  }
+}
+
+/**
+ * Render both sides of a modified block with changed parts and changed words marked.
+ */
+function renderModifiedBlock(
+  renderer: MarkdownRenderer,
+  contexts: DocumentContexts,
+  block: AlignedBlock,
+): HighlightedDiff {
+  const oldSide = highlightForSide(block.oldLines, block.changedOldLines, REMOVED_SIDE);
+  const newSide = highlightForSide(block.newLines, block.changedNewLines, ADDED_SIDE);
+  const words = annotateWordChanges(
+    renderVisible(renderer, block.oldLines.join('\n'), contexts.oldDocument, oldSide.marks),
+    renderVisible(renderer, block.newLines.join('\n'), contexts.newDocument, newSide.marks),
+  );
+  return {
+    oldHtml: wrapBlock(words.oldHtml, oldSide.blockClass),
+    newHtml: wrapBlock(words.newHtml, newSide.blockClass),
   };
 }
 
 /**
- * Apply word-level diff annotations to rendered HTML.
- *
- * This takes the rendered HTML and the raw markdown texts, computes word-level
- * diffs on the raw text, then attempts to apply those annotations to the HTML.
- *
- * For simplicity and reliability, we use a strategy of computing the word diff
- * on the plain text content and then injecting the word-level spans into the
- * rendered HTML by replacing text nodes.
+ * Render a changed fragment. Some markdown renders nothing on its own, e.g. a reference link
+ * definition; its source is shown instead, so that the change stays visible.
  */
-function applyWordDiffToHtml(
-  renderedHtml: string,
-  oldText: string,
-  newText: string,
-  side: 'old' | 'new',
+function renderVisible(
+  renderer: MarkdownRenderer,
+  markdown: string,
+  context: DocumentContext,
+  marks?: ChangeMarks,
 ): string {
-  const dmp = new DiffMatchPatch();
-  const diffs = dmp.diff_main(oldText, newText);
-  dmp.diff_cleanupSemantic(diffs);
-
-  // Build annotated plain text
-  let annotatedText = '';
-  for (const [op, text] of diffs) {
-    const escaped = escapeHtml(text);
-    if (op === DiffMatchPatch.DIFF_EQUAL) {
-      annotatedText += escaped;
-    } else if (op === DiffMatchPatch.DIFF_DELETE && side === 'old') {
-      annotatedText += `<span class="diff-removed-word">${escaped}</span>`;
-    } else if (op === DiffMatchPatch.DIFF_INSERT && side === 'new') {
-      annotatedText += `<span class="diff-added-word">${escaped}</span>`;
-    }
-    // Skip DIFF_INSERT for old side and DIFF_DELETE for new side
+  const html = renderer.renderFragment(markdown, context, marks);
+  if (html.trim() !== '' || markdown.trim() === '') {
+    return html;
   }
-
-  // Replace text content in the HTML with annotated text
-  return replaceTextInHtml(renderedHtml, annotatedText);
+  return `<pre class="${SOURCE_CLASS}"><code>${escapeHtml(markdown)}</code></pre>`;
 }
 
 /**
- * Strip HTML tags from a string, returning only the text content.
+ * A block whose content changed on every line is filled as a whole. A block that also contains
+ * unchanged content (e.g. the other rows of a table) is not filled; only its changed parts are
+ * marked. Blank lines do not count as content.
  */
-function stripHtmlTags(html: string): string {
-  return html.replace(/<[^>]*>/g, '');
-}
-
-/**
- * Replace text nodes in HTML with annotated text.
- *
- * This walks through the HTML, preserving tags, and replaces the text content
- * with the corresponding portions of the annotated text.
- */
-function replaceTextInHtml(html: string, annotatedText: string): string {
-  // Tokenize the HTML into tags and text segments
-  const tokens = tokenizeHtml(html);
-  let annotatedIdx = 0;
-  let result = '';
-
-  // Build a plain-text version of annotatedText (without the span tags) for matching
-  const annotatedPlain = stripHtmlTags(annotatedText);
-
-  for (const token of tokens) {
-    if (token.type === 'tag') {
-      result += token.value;
-    } else {
-      // Text node — find the corresponding annotated portion
-      const textLen = token.value.length;
-      const plainSegment = annotatedPlain.substring(annotatedIdx, annotatedIdx + textLen);
-
-      if (plainSegment === token.value) {
-        // Find the annotated version of this segment
-        result += extractAnnotatedSegment(annotatedText, annotatedIdx, textLen);
-      } else {
-        // Fallback: use original text
-        result += token.value;
-      }
-      annotatedIdx += textLen;
-    }
+function highlightForSide(
+  lines: readonly string[],
+  changedLines: readonly number[],
+  side: SideClasses,
+): { marks?: ChangeMarks; blockClass: string } {
+  const changed = new Set(changedLines);
+  const hasUnchangedContent = lines.some(
+    (line, index) => line.trim() !== '' && !changed.has(index),
+  );
+  if (hasUnchangedContent) {
+    return {
+      marks: { lines: changedLines, className: side.partClass },
+      blockClass: `${side.blockClass} ${PARTIAL_BLOCK_CLASS}`,
+    };
   }
-
-  return result;
-}
-
-/**
- * Extract a segment from annotated text that corresponds to a given range
- * of plain text characters.
- */
-function extractAnnotatedSegment(annotatedText: string, startIdx: number, length: number): string {
-  let plainCount = 0;
-  let i = 0;
-
-  // Find the start position in annotated text
-  while (i < annotatedText.length && plainCount < startIdx) {
-    if (annotatedText[i] === '<') {
-      // Skip tag
-      while (i < annotatedText.length && annotatedText[i] !== '>') {
-        i++;
-      }
-      i++; // skip '>'
-    } else {
-      plainCount++;
-      i++;
-    }
-  }
-  const startPos = i;
-
-  // Find the end position
-  let consumed = 0;
-  while (i < annotatedText.length && consumed < length) {
-    if (annotatedText[i] === '<') {
-      while (i < annotatedText.length && annotatedText[i] !== '>') {
-        i++;
-      }
-      i++; // skip '>'
-    } else {
-      consumed++;
-      i++;
-    }
-  }
-
-  return annotatedText.substring(startPos, i);
-}
-
-interface HtmlToken {
-  type: 'tag' | 'text';
-  value: string;
-}
-
-/**
- * Tokenize HTML into a sequence of tag and text tokens.
- */
-function tokenizeHtml(html: string): HtmlToken[] {
-  const tokens: HtmlToken[] = [];
-  let i = 0;
-
-  while (i < html.length) {
-    if (html[i] === '<') {
-      // Find end of tag
-      let j = i + 1;
-      while (j < html.length && html[j] !== '>') {
-        j++;
-      }
-      j++; // include '>'
-      tokens.push({ type: 'tag', value: html.substring(i, j) });
-      i = j;
-    } else {
-      // Text node
-      let j = i;
-      while (j < html.length && html[j] !== '<') {
-        j++;
-      }
-      tokens.push({ type: 'text', value: html.substring(i, j) });
-      i = j;
-    }
-  }
-
-  return tokens;
+  return { blockClass: side.blockClass };
 }

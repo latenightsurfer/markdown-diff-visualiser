@@ -35,6 +35,7 @@ if (fs.existsSync(path.join(ROOT, 'out', 'diffParser.js'))) {
 
 const { parseDiff } = require(path.join(pipelineRoot, 'diffParser'));
 const { highlightDiff } = require(path.join(pipelineRoot, 'diffHighlighter'));
+const { normalizeLineEndings } = require(path.join(pipelineRoot, 'lineEndings'));
 
 const targetFile = path.resolve(ROOT, process.argv[2] || 'test.md');
 const relativeFile = path.relative(ROOT, targetFile);
@@ -91,8 +92,9 @@ function serveDynamic(fileName) {
 
       let leftContent, rightContent;
       try {
-        leftContent = getFileAtVersion(leftV, relativeFile, ROOT);
-        rightContent = getFileAtVersion(rightV, relativeFile, ROOT);
+        // Git blobs and the working tree may differ in line endings (core.autocrlf), see issue #8
+        leftContent = normalizeLineEndings(getFileAtVersion(leftV, relativeFile, ROOT));
+        rightContent = normalizeLineEndings(getFileAtVersion(rightV, relativeFile, ROOT));
       } catch (err) {
         res.writeHead(500);
         res.end('Error reading file versions: ' + err.message);

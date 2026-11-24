@@ -18,6 +18,8 @@ import {
   Uri,
   _getThemeChangeListeners,
   _resetThemeChangeListeners,
+  MockExtensionContext,
+  MockWebviewPanel,
 } from './mocks/vscode';
 
 // Use proxyquire to replace the 'vscode' module with our mock
@@ -40,8 +42,8 @@ const { createPanelManager } = proxyquire('../webviewPanelManager', {
 });
 
 describe('Webview Panel Manager', function () {
-  let mockPanel: any;
-  let mockContext: any;
+  let mockPanel: MockWebviewPanel;
+  let mockContext: MockExtensionContext;
 
   beforeEach(function () {
     mockPanel = createMockWebviewPanel();

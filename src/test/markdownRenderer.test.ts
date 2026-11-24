@@ -160,4 +160,154 @@ describe('Markdown Renderer', function () {
       expect(html).to.contain('src="/root/img/b.png"');
     });
   });
+
+  describe('renderFragment', function () {
+    const PART = 'diff-added-part';
+    const table = '| Name | Value |\n|---|---|\n| a | 1 |\n| b | 2 |';
+    const marked = (lines: number[]) => ({ lines, className: PART });
+    const renderMarked = (markdown: string, lines: number[]) =>
+      renderer.renderFragment(markdown, renderer.createDocumentContext(markdown), marked(lines));
+
+    it('adds the class to the table row on a changed line', function () {
+      const html = renderMarked(table, [3]);
+
+      expect(html).to.contain(`<tr class="${PART}">\n<td>b</td>`);
+      expect(html.match(/diff-added-part/g)).to.have.length(1);
+    });
+
+    it('adds the class to the header row when the header changed', function () {
+      const html = renderMarked(table, [0]);
+
+      expect(html).to.contain(`<tr class="${PART}">\n<th>Name</th>`);
+    });
+
+    it('adds the class to the item of a tight list', function () {
+      const html = renderMarked('- one\n- two\n- three', [1]);
+
+      expect(html).to.contain(`<li class="${PART}">two</li>`);
+      expect(html.match(/diff-added-part/g)).to.have.length(1);
+    });
+
+    it('adds the class to the paragraph inside a blockquote', function () {
+      const html = renderMarked('> first\n>\n> second', [2]);
+
+      expect(html).to.contain(`<p class="${PART}">second</p>`);
+      expect(html).to.contain('<p>first</p>');
+    });
+
+    it('wraps a changed fenced code block in a div with the class', function () {
+      const html = renderMarked('Intro.\n\n```\ncode\n```', [3]);
+
+      expect(html).to.match(new RegExp(`<div class="${PART}"><pre class="hljs">`));
+      expect(html).to.contain('<p>Intro.</p>');
+    });
+
+    it('renders like render() without marks', function () {
+      const context = renderer.createDocumentContext(table);
+
+      expect(renderer.renderFragment(table, context)).to.equal(renderer.render(table));
+    });
+
+    it('returns an empty string for empty input', function () {
+      expect(renderMarked('', [0])).to.equal('');
+    });
+
+    describe('in the context of the whole document', function () {
+      const documentMarkdown = [
+        'See [the docs][docs].[^a]',
+        '',
+        'More.[^b]',
+        '',
+        '[docs]: https://example.com/docs',
+        '',
+        '[^a]: Note a.',
+        '[^b]: Note b.',
+        '[^unused]: Never referenced.',
+      ].join('\n');
+      const context = renderer.createDocumentContext(documentMarkdown);
+
+      it('resolves a reference link defined in another fragment', function () {
+        const html = renderer.renderFragment('See [the docs][docs].[^a]', context);
+
+        expect(html).to.contain('<a href="https://example.com/docs">the docs</a>');
+      });
+
+      it('numbers a footnote reference like the whole document does', function () {
+        const html = renderer.renderFragment('More.[^b]', context);
+
+        expect(html).to.contain('<a href="#fn2" id="fnref2">[2]</a>');
+        expect(html).not.to.contain('footnotes-sep');
+      });
+
+      it('renders a footnote definition in place with its document number', function () {
+        const html = renderer.renderFragment('[^b]: Note b.', context);
+
+        expect(html).to.contain('<ol class="footnotes-list" start="2">');
+        expect(html).to.contain('<li id="fn2" class="footnote-item"><p>Note b.</p>');
+      });
+
+      it('marks the changed paragraph of a footnote definition', function () {
+        const html = renderer.renderFragment('[^a]: Note a.\n[^b]: Note b.', context, marked([1]));
+
+        expect(html).to.contain(`<p class="${PART}">Note b.</p>`);
+        expect(html).to.contain('<p>Note a.</p>');
+      });
+
+      it('renders an unreferenced footnote definition without a number', function () {
+        const html = renderer.renderFragment('[^unused]: Never referenced.', context);
+
+        expect(html).to.contain('<ul class="footnotes-list">');
+        expect(html).to.contain('Never referenced.');
+      });
+
+      it('still lists inline footnotes after the fragment', function () {
+        const fragment = 'Text.^[Inline note.] More.[^b]';
+
+        const html = renderer.renderFragment(fragment, context);
+
+        expect(html).to.contain('<a href="#fn1" id="fnref1">[1]</a>');
+        expect(html).to.contain('<a href="#fn2" id="fnref2">[2]</a>');
+        expect(html).to.contain('<li id="fn1" class="footnote-item"><p>Inline note.');
+        expect(html.match(/footnote-item/g)).to.have.length(1);
+      });
+    });
+  });
+
+  describe('render', function () {
+    it('collects footnotes at the end of a whole document', function () {
+      const html = renderer.render('Text.[^a]\n\n[^a]: Note.\n\nAfter.');
+
+      expect(html.indexOf('After.')).to.be.lessThan(html.indexOf('Note.'));
+      expect(html).to.contain('footnotes-sep');
+    });
+  });
+
+  describe('topLevelBlockRanges', function () {
+    it('returns one range per top-level block', function () {
+      const md = '# Title\n\n| a |\n|---|\n| 1 |\n\n- x\n- y\n\n```js\ncode\n```';
+
+      const ranges = renderer.topLevelBlockRanges(md);
+
+      // markdown-it counts the blank line after a list as part of the list
+      expect(ranges).to.deep.equal([
+        { start: 0, end: 1 },
+        { start: 2, end: 5 },
+        { start: 6, end: 9 },
+        { start: 9, end: 12 },
+      ]);
+    });
+
+    it('returns one range for a footnote definition with several paragraphs', function () {
+      const md = 'Text.[^a]\n\n[^a]: First.\n\n    Second.';
+
+      expect(renderer.topLevelBlockRanges(md)).to.deep.equal([
+        { start: 0, end: 1 },
+        { start: 2, end: 5 },
+      ]);
+    });
+
+    it('returns no ranges for empty input', function () {
+      expect(renderer.topLevelBlockRanges('')).to.deep.equal([]);
+    });
+  });
 });

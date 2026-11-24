@@ -1,15 +1,16 @@
 /**
  * Unit Tests for Diff Highlighter
  *
- * Tests the highlightDiff, computeBlockDiffs, and computeWordDiff functions
+ * Tests the highlightDiff and computeBlockDiffs functions
  * with realistic DiffHunk objects. Verifies CSS class presence in output HTML.
  *
  * Requirements covered: 4.1, 4.2, 4.3, 4.4
  */
 
 import { expect } from 'chai';
-import { highlightDiff, computeBlockDiffs, computeWordDiff } from '../diffHighlighter';
+import { highlightDiff, computeBlockDiffs } from '../diffHighlighter';
 import { DiffHunk, DiffChange } from '../diffParser';
+import { countOccurrences, highlightDocuments } from './helpers/highlight';
 
 /**
  * Helper to build a DiffHunk from a concise description.
@@ -230,52 +231,171 @@ describe('Diff Highlighter - computeBlockDiffs', function () {
   });
 });
 
-describe('Diff Highlighter - computeWordDiff', function () {
-  it('should annotate changed words with diff-removed-word and diff-added-word', function () {
-    const result = computeWordDiff('Hello world', 'Hello universe');
+describe('Diff Highlighter - markdown blocks split by a hunk (issue #9)', function () {
+  const table = (rowB: string) =>
+    `# Title\n\n| Name | Value |\n|---|---|\n| a | 1 |\n${rowB}\n| c | 3 |\n\nAfter.\n`;
 
-    // Old text should have "world" wrapped in diff-removed-word
-    expect(result.oldAnnotated).to.include('diff-removed-word');
-    expect(result.oldAnnotated).to.include('world');
+  it('renders a table whose middle row changed as one table on each side', function () {
+    const result = highlightDocuments(table('| b | 2 |'), table('| b | 20 |'));
 
-    // New text should have "universe" wrapped in diff-added-word
-    expect(result.newAnnotated).to.include('diff-added-word');
-    expect(result.newAnnotated).to.include('universe');
+    expect(countOccurrences(result.oldHtml, '<table>')).to.equal(1);
+    expect(countOccurrences(result.newHtml, '<table>')).to.equal(1);
+    expect(result.newHtml).to.not.include('| b');
   });
 
-  it('should not annotate identical strings', function () {
-    const result = computeWordDiff('Same text here', 'Same text here');
+  it('marks only the changed table row', function () {
+    const result = highlightDocuments(table('| b | 2 |'), table('| b | 20 |'));
 
-    expect(result.oldAnnotated).to.not.include('diff-removed-word');
-    expect(result.oldAnnotated).to.not.include('diff-added-word');
-    expect(result.newAnnotated).to.not.include('diff-removed-word');
-    expect(result.newAnnotated).to.not.include('diff-added-word');
-
-    // Content should still be present (HTML-escaped)
-    expect(result.oldAnnotated).to.include('Same text here');
-    expect(result.newAnnotated).to.include('Same text here');
+    expect(countOccurrences(result.oldHtml, '<tr class="diff-removed-part">')).to.equal(1);
+    expect(countOccurrences(result.newHtml, '<tr class="diff-added-part">')).to.equal(1);
   });
 
-  it('should handle completely different strings', function () {
-    const result = computeWordDiff('alpha beta', 'gamma delta');
+  it('does not fill a table that changed only in one row', function () {
+    const result = highlightDocuments(table('| b | 2 |'), table('| b | 20 |'));
 
-    // Old should have removed-word spans
-    expect(result.oldAnnotated).to.include('diff-removed-word');
-    // New should have added-word spans
-    expect(result.newAnnotated).to.include('diff-added-word');
+    expect(result.oldHtml).to.include('<div class="diff-removed-block diff-partial"><table>');
+    expect(result.newHtml).to.include('<div class="diff-added-block diff-partial"><table>');
   });
 
-  it('should escape HTML special characters in output', function () {
-    const result = computeWordDiff('<div>old</div>', '<div>new</div>');
+  it('marks the changed word inside the changed table cell', function () {
+    const result = highlightDocuments(table('| b | 2 |'), table('| b | 20 |'));
 
-    // HTML characters should be escaped
-    expect(result.oldAnnotated).to.include('&lt;');
-    expect(result.oldAnnotated).to.include('&gt;');
-    expect(result.newAnnotated).to.include('&lt;');
-    expect(result.newAnnotated).to.include('&gt;');
+    expect(result.oldHtml).to.include('<td><span class="diff-removed-word">2</span></td>');
+    expect(result.newHtml).to.include('<td><span class="diff-added-word">20</span></td>');
+  });
 
-    // Should not contain raw HTML tags from the input
-    expect(result.oldAnnotated).to.not.include('<div>');
-    expect(result.newAnnotated).to.not.include('<div>');
+  it('leaves the old table unmarked when a row was only added', function () {
+    const oldMarkdown = '| Name | Value |\n|---|---|\n| a | 1 |\n\nAfter.\n';
+    const newMarkdown = '| Name | Value |\n|---|---|\n| a | 1 |\n| b | 2 |\n\nAfter.\n';
+
+    const result = highlightDocuments(oldMarkdown, newMarkdown);
+
+    expect(countOccurrences(result.oldHtml, '<table>')).to.equal(1);
+    expect(result.oldHtml).to.not.include('diff-removed-part');
+    expect(result.oldHtml).to.not.include('diff-removed-word');
+    expect(countOccurrences(result.newHtml, '<tr class="diff-added-part">')).to.equal(1);
+  });
+
+  it('marks only the added row of a formatted table whose columns got wider', function () {
+    const oldMarkdown = '| Os  | Status |\n| --- | ------ |\n| Win | tested |\n';
+    const newMarkdown =
+      '| Os  | Status       |\n| --- | ------------ |\n| Win | tested       |\n| WSL | experimental |\n';
+
+    const result = highlightDocuments(oldMarkdown, newMarkdown);
+
+    expect(countOccurrences(result.newHtml, 'diff-added-part')).to.equal(1);
+    expect(result.newHtml).to.include('<tr class="diff-added-part">\n<td><span');
+    expect(result.oldHtml).to.not.include('diff-removed-part');
+  });
+
+  it('renders a fenced code block whose middle line changed as one code block', function () {
+    const fence = (line: string) =>
+      `Intro.\n\n\`\`\`js\nconst a = 1;\n${line}\nconst c = 3;\n\`\`\`\n`;
+
+    const result = highlightDocuments(fence('const b = 2;'), fence('const b = 20;'));
+
+    expect(countOccurrences(result.newHtml, '<pre')).to.equal(1);
+    expect(result.newHtml).to.not.include('```');
+  });
+
+  it('marks only the changed item of a list', function () {
+    const list = (item: string) => `Intro.\n\n- one\n- ${item}\n- three\n`;
+
+    const result = highlightDocuments(list('two'), list('zwei'));
+
+    expect(countOccurrences(result.newHtml, '<ul>')).to.equal(1);
+    expect(result.newHtml).to.include(
+      '<li class="diff-added-part"><span class="diff-added-word">zwei',
+    );
+    expect(result.newHtml).to.include('<li>one</li>');
+  });
+
+  it('keeps unchanged paragraphs outside the highlighted table', function () {
+    const result = highlightDocuments(table('| b | 2 |'), table('| b | 20 |'));
+    const highlighted = result.newHtml.match(
+      /<div class="diff-added-block[^"]*">([\s\S]*?)<\/div>/,
+    );
+
+    expect(highlighted?.[1]).to.include('<table>');
+    expect(highlighted?.[1]).to.not.include('Title');
+    expect(highlighted?.[1]).to.not.include('After.');
+  });
+});
+
+describe('Diff Highlighter - word-level highlights on rendered markdown', function () {
+  it('marks the changed word inside bold text without breaking the markup', function () {
+    const result = highlightDocuments('Some **bold** text.\n', 'Some **brave** text.\n');
+
+    expect(result.oldHtml).to.include(
+      '<strong><span class="diff-removed-word">bold</span></strong>',
+    );
+    expect(result.newHtml).to.include(
+      '<strong><span class="diff-added-word">brave</span></strong>',
+    );
+  });
+
+  it('marks a changed paragraph as a whole block', function () {
+    const result = highlightDocuments('Old sentence.\n', 'New sentence.\n');
+
+    expect(result.newHtml).to.include('<div class="diff-added-block"><p>');
+  });
+});
+
+describe('Diff Highlighter - footnotes and reference links in separate blocks', function () {
+  const document = (paragraph: string, note: string, url: string) =>
+    [
+      '# Guide',
+      '',
+      `${paragraph}[^issues] See [the docs][docs].`,
+      '',
+      'Unchanged paragraph.',
+      '',
+      `[docs]: ${url}`,
+      '',
+      `[^issues]: ${note}`,
+      '',
+    ].join('\n');
+  const before = document('Report problems.', 'Include the markdown.', 'https://example.com/old');
+
+  it('renders footnote references and reference links of a changed paragraph', function () {
+    const after = document(
+      'Report problems on GitHub.',
+      'Include the markdown.',
+      'https://example.com/old',
+    );
+
+    const result = highlightDocuments(before, after);
+
+    expect(result.newHtml).to.contain('<a href="#fn1" id="fnref1">[1]</a>');
+    expect(result.newHtml).to.contain('<a href="https://example.com/old">');
+    expect(result.newHtml).not.to.contain('[^issues]');
+    expect(result.newHtml).not.to.contain('[docs]');
+  });
+
+  it('shows a changed footnote definition with its changed words', function () {
+    const after = document(
+      'Report problems.',
+      'Include the failing markdown.',
+      'https://example.com/old',
+    );
+
+    const result = highlightDocuments(before, after);
+
+    expect(result.newHtml).to.match(
+      /<div class="diff-added-block">[^]*?<li id="fn1" class="footnote-item">[^]*?<span class="diff-added-word">failing/,
+    );
+    expect(result.oldHtml).to.contain('<li id="fn1" class="footnote-item">');
+  });
+
+  it('shows the source of a changed reference link definition', function () {
+    const after = document('Report problems.', 'Include the markdown.', 'https://example.com/new');
+
+    const result = highlightDocuments(before, after);
+
+    expect(result.newHtml).to.contain(
+      '<pre class="diff-source"><code>[docs]: https://example.com/',
+    );
+    expect(result.newHtml).to.contain('<span class="diff-added-word">new</span>');
+    expect(result.newHtml).to.contain('<a href="https://example.com/new">');
   });
 });

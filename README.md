@@ -4,8 +4,15 @@
 
 Stop squinting at `+`/`-` lines in git diffs. This VS Code extension shows you a beautiful side-by-side rendered preview of markdown changes, with green/red highlights on exactly what was added or removed.
 
-[![CI](https://github.com/arjuntic/markdown-diff-visualiser/actions/workflows/ci.yml/badge.svg)](https://github.com/arjuntic/markdown-diff-visualiser/actions/workflows/ci.yml)
-[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/arjuntic.markdown-diff-visualiser)](https://marketplace.visualstudio.com/items?itemName=arjuntic.markdown-diff-visualiser)
+> **Fork notice:** This is a fork of
+> [arjuntic/markdown-diff-visualiser](https://github.com/arjuntic/markdown-diff-visualiser).
+> It fixes CRLF line endings ([#8](https://github.com/arjuntic/markdown-diff-visualiser/issues/8))
+> and tables broken by partial changes
+> ([#9](https://github.com/arjuntic/markdown-diff-visualiser/issues/9)), highlights only the
+> changed parts of tables and lists, and renders footnotes and reference links in changed blocks.
+> See the [changelog](CHANGELOG.md). Credit for the original extension goes to its author.
+
+[![CI](https://github.com/latenightsurfer/markdown-diff-visualiser/actions/workflows/ci.yml/badge.svg)](https://github.com/latenightsurfer/markdown-diff-visualiser/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## The Problem
@@ -40,34 +47,41 @@ See the extension in action:
 ## Features
 
 - **Side-by-side rendered preview** — see the actual formatted output, not raw markup
-- **Block-level highlighting** — changed paragraphs, headings, list items, and table rows are highlighted
+- **Block-level highlighting** — changed paragraphs and headings are highlighted; inside a table, list or quote only the changed rows, items or paragraphs are
 - **Word-level diffs** — within a changed block, individual words that differ are highlighted
 - **Scrollbar minimap** — colored markers on the right edge show where changes are (click to jump)
 - **Aligned scrolling** — unchanged content stays at the same vertical position on both sides
 - **Three comparison modes** — Last Committed vs Unstaged, Last Committed vs Staged, Staged vs Unstaged
-- **Full GFM support** — tables, task lists, strikethrough, fenced code blocks, footnotes
+- **Full GFM support** — tables, task lists, strikethrough, fenced code blocks, footnotes, reference-style links
 - **Images and videos** — external images, GIFs, YouTube thumbnails all render in the preview
 - **Theme-aware** — respects your VS Code light/dark/high-contrast theme
 - **Right-click support** — works from the editor, explorer sidebar, and command palette
 
 ## Installation
 
-### From VSIX (local)
+The fork is not on the VS Code Marketplace; it is distributed as a `.vsix` file.
 
-1. Download or build the `.vsix` file
-2. In VS Code: `Cmd+Shift+P` → "Extensions: Install from VSIX..."
-3. Select the `.vsix` file
-4. Reload the window
+### From a GitHub release
 
-### From Source
+1. Download `markdown-diff-visualiser-0.1.0.vsix` from the
+   [releases page](https://github.com/latenightsurfer/markdown-diff-visualiser/releases).
+2. In VS Code: `Ctrl+Shift+P` (macOS: `Cmd+Shift+P`) → "Extensions: Install from VSIX..."
+3. Select the file and reload the window.
+
+Or from a terminal: `code --install-extension markdown-diff-visualiser-0.1.0.vsix`
+
+The fork keeps the extension ID of the original (`arjuntic.markdown-diff-visualiser`), so it
+replaces a marketplace installation instead of running next to it. Updates are not installed
+automatically; install the `.vsix` of a new release the same way.
+
+### From source
 
 ```bash
-git clone https://github.com/arjuntic/markdown-diff-visualiser.git
+git clone https://github.com/latenightsurfer/markdown-diff-visualiser.git
 cd markdown-diff-visualiser
 npm install
-npm run bundle
-npx @vscode/vsce package --allow-missing-repository
-# Then install the generated .vsix
+npm run package          # bundle and create the .vsix
+code --install-extension markdown-diff-visualiser-0.1.0.vsix
 ```
 
 ## Tutorial: Your First Markdown Diff
@@ -155,7 +169,7 @@ Earn 1 point per dollar spent. Redeem 100 points for a free pizza!
 ### Step 4: See the diff preview
 
 1. Open `pizza-api.md` in VS Code
-2. `Cmd+Shift+P` → "Markdown Diff Visualiser: Show Changes"
+2. `Ctrl+Shift+P` (macOS: `Cmd+Shift+P`) → "Markdown Diff Visualiser: Show Changes"
 3. Or right-click the file → "Markdown Diff Visualiser: Show Changes"
 
 Here's what it looks like with real content — tables, code blocks, and images all rendered:
@@ -249,6 +263,7 @@ No configuration needed. It just works.
 - Very large files (50,000+ lines) may be slow to render — the extension will offer to show only changed sections
 - Relative image paths in markdown are resolved against the workspace root, not the file's directory
 - The extension compares file content, not rendered output — so CSS-only changes won't show up
+- Inline footnotes (`^[…]`) are numbered within their changed block, not across the document
 
 ## AI Agent Integration
 
@@ -261,7 +276,7 @@ The repo includes a ready-to-use skill and slash command. To add it to any proje
 **Option A — Clone this repo (skill is included automatically):**
 
 ```bash
-git clone https://github.com/arjuntic/markdown-diff-visualiser.git
+git clone https://github.com/latenightsurfer/markdown-diff-visualiser.git
 # The .claude/ directory contains the skill — Claude Code picks it up automatically
 ```
 
@@ -348,22 +363,23 @@ This opens a full-featured rendered diff in your default browser with syntax hig
 
 ## Contributing
 
-Contributions welcome! This is a hobby project.
+Contributions welcome! This is a hobby project. Follow the coding and testing guideline in
+[docs/clean-code.md](docs/clean-code.md); [samples/](samples/README.md) has prepared changes for
+checking the extension by hand.
 
 ```bash
 # Clone and set up
-git clone https://github.com/arjuntic/markdown-diff-visualiser.git
+git clone https://github.com/latenightsurfer/markdown-diff-visualiser.git
 cd markdown-diff-visualiser
 npm install
 
-# Run tests
+# Check before committing
 npm test
+npm run lint
+npm run format:check
 
-# Build
-npm run bundle
-
-# Package
-npx @vscode/vsce package --allow-missing-repository
+# Package (bundle and create the .vsix)
+npm run package
 ```
 
 ## License

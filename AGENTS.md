@@ -13,15 +13,21 @@ markdown-diff-visualiser/
 │   ├── gitService.ts         # Git operations — getDiff, getFileContent, hasChanges
 │   ├── diffParser.ts         # Parses unified diffs into structured hunks
 │   ├── markdownRenderer.ts   # markdown-it + highlight.js rendering
-│   ├── diffHighlighter.ts    # Block-level and word-level diff highlighting
+│   ├── diffHighlighter.ts    # Block-level diff highlighting, orchestrates the core modules
+│   ├── blockAlignment.ts     # Extends changed blocks to whole markdown blocks (tables, lists, …)
+│   ├── wordDiff.ts           # Word-level diff on the rendered HTML
+│   ├── documentFragments.ts  # Renders single blocks with the references and footnotes of the whole document
+│   ├── lineEndings.ts        # CRLF/LF normalisation
 │   ├── webviewPanelManager.ts # WebviewPanel creation and messaging
 │   ├── types.d.ts            # Type declarations for untyped modules
 │   ├── webview/
 │   │   ├── main.js           # Client-side JS (scroll sync, minimap, dropdown)
 │   │   └── styles.css        # Theme-adaptive styles, syntax highlighting
-│   └── test/                 # 129 tests (Mocha + Chai + fast-check)
+│   └── test/                 # Unit, property and integration tests (Mocha + Chai + fast-check)
 ├── images/                   # Extension icon (SVG + PNG)
 ├── demo/                     # Screenshots and demo GIF
+├── docs/                     # Coding guideline (clean-code.md)
+├── samples/                  # Sample markdown changes for manual checks
 ├── package.json              # Extension manifest with commands and menus
 ├── tsconfig.json
 └── README.md
@@ -33,7 +39,7 @@ markdown-diff-visualiser/
 npm install              # Install dependencies
 npm run compile          # TypeScript compilation (tsc)
 npm run bundle           # Bundle with esbuild (creates dist/extension.js)
-npm test                 # Run all 129 tests
+npm test                 # Run all tests
 npm run package          # Bundle + package as .vsix
 ```
 
@@ -50,12 +56,14 @@ npm run package          # Bundle + package as .vsix
 After editing any `.md` or `.markdown` file in this project or any project with this extension installed, the user can preview the rendered diff:
 
 **Option 1 — Browser preview (works from any terminal):**
+
 ```bash
 node scripts/preview-diff.js <file> [mode]
 # mode: committed-unstaged (default), committed-staged, staged-unstaged
 ```
 
 **Option 2 — VS Code extension:**
+
 1. Open the file in VS Code
 2. `Cmd+Shift+P` → "Markdown Diff Visualiser: Show Changes"
 3. Or right-click → "Markdown Diff Visualiser: Show Changes"
@@ -69,6 +77,8 @@ Tests use Mocha + Chai with sinon for mocking and fast-check for property-based 
 Run tests: `npm test` (requires `ts-node`)
 
 ## Code Style
+
+Follow the coding guideline in [docs/clean-code.md](docs/clean-code.md) for every code change. In short:
 
 - TypeScript with strict mode
 - `child_process.execFile` for all git commands (no shell injection)

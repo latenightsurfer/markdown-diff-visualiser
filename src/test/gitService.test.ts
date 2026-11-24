@@ -10,6 +10,7 @@
 import { expect } from 'chai';
 import * as sinon from 'sinon';
 import { createGitService, GitError } from '../gitService';
+import type { ExecFileCallback } from './mocks/vscode';
 
 // Use require to get a mutable reference to child_process
 // (import * as creates a frozen ESM namespace in newer Node.js)
@@ -35,9 +36,11 @@ describe('Git Service', function () {
     stderr?: string;
     error?: NodeJS.ErrnoException | null;
   }): void {
-    execFileStub.callsFake((_cmd: string, _args: string[], _opts: any, callback: Function) => {
-      callback(result.error || null, result.stdout || '', result.stderr || '');
-    });
+    execFileStub.callsFake(
+      (_cmd: string, _args: string[], _opts: unknown, callback: ExecFileCallback) => {
+        callback(result.error || null, result.stdout || '', result.stderr || '');
+      },
+    );
   }
 
   /**
@@ -51,13 +54,15 @@ describe('Git Service', function () {
       error?: NodeJS.ErrnoException | null;
     },
   ): void {
-    execFileStub.callsFake((_cmd: string, args: string[], _opts: any, callback: Function) => {
-      if (JSON.stringify(args) === JSON.stringify(expectedArgs)) {
-        callback(result.error || null, result.stdout || '', result.stderr || '');
-      } else {
-        callback(null, '', '');
-      }
-    });
+    execFileStub.callsFake(
+      (_cmd: string, args: string[], _opts: unknown, callback: ExecFileCallback) => {
+        if (JSON.stringify(args) === JSON.stringify(expectedArgs)) {
+          callback(result.error || null, result.stdout || '', result.stderr || '');
+        } else {
+          callback(null, '', '');
+        }
+      },
+    );
   }
 
   describe('getRepoRoot', function () {

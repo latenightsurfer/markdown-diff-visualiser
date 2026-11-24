@@ -59,10 +59,126 @@ hljs.registerLanguage('shell', shell);
 hljs.registerLanguage('dockerfile', dockerfile);
 hljs.registerLanguage('docker', dockerfile);
 import * as path from 'path';
+import {
+  createDocumentContext,
+  createFragmentEnv,
+  DocumentContext,
+  inPlaceFootnotes,
+} from './documentFragments';
+
+export type { DocumentContext } from './documentFragments';
+
+/** A 0-based, end-exclusive range of source lines. */
+export interface LineRange {
+  readonly start: number;
+  readonly end: number;
+}
+
+/** Source lines of a fragment whose blocks get a CSS class. */
+export interface ChangeMarks {
+  readonly lines: readonly number[];
+  readonly className: string;
+}
 
 export interface MarkdownRenderer {
   render(markdown: string): string;
   renderWithBase(markdown: string, basePath: string): string;
+  /** Collect the reference and footnote definitions of a whole document. */
+  createDocumentContext(markdown: string): DocumentContext;
+  /**
+   * Render a part of a document like it renders inside the document: reference links and
+   * footnotes resolve against `context`, footnote definitions stay in place. With `marks`, the
+   * innermost blocks (table row, paragraph, list item, heading, code block, …) whose source
+   * lines include one of the marked lines get the marks' class.
+   */
+  renderFragment(fragment: string, context: DocumentContext, marks?: ChangeMarks): string;
+  /** Source line ranges of the top-level blocks (paragraph, table, list, fence, …). */
+  topLevelBlockRanges(markdown: string): LineRange[];
+}
+
+type Token = ReturnType<MarkdownIt['parse']>[number];
+
+/** Block tokens that can carry a change class, from the innermost level of a document. */
+const MARKABLE_TOKEN_TYPES: ReadonlySet<string> = new Set([
+  'tr_open',
+  'heading_open',
+  'paragraph_open',
+  'fence',
+  'code_block',
+  'html_block',
+  'hr',
+]);
+
+/** Rules whose default output ignores token attributes; they get a wrapping div instead. */
+const WRAPPED_RULES = ['fence', 'html_block'] as const;
+
+/**
+ * Add `className` to the changed blocks of freshly parsed tokens. The tokens are local to one
+ * render call, so this mutation does not leak.
+ */
+function applyChangedClass(
+  tokens: readonly Token[],
+  changedLines: ReadonlySet<number>,
+  className: string,
+): void {
+  const openListItems: Token[] = [];
+  for (const token of tokens) {
+    if (token.type === 'list_item_open') {
+      openListItems.push(token);
+    } else if (token.type === 'list_item_close') {
+      openListItems.pop();
+    } else if (MARKABLE_TOKEN_TYPES.has(token.type) && touchesLines(token, changedLines)) {
+      // Paragraphs of tight lists are not rendered as <p>; mark their list item instead
+      const target = token.hidden ? openListItems[openListItems.length - 1] : token;
+      addClassOnce(target, className);
+    }
+  }
+}
+
+function touchesLines(token: Token, lines: ReadonlySet<number>): boolean {
+  if (!token.map) {
+    return false;
+  }
+  for (let line = token.map[0]; line < token.map[1]; line++) {
+    if (lines.has(line)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function addClassOnce(token: Token | undefined, className: string): void {
+  const classes = token?.attrGet('class')?.split(' ') ?? [];
+  if (token && !classes.includes(className)) {
+    token.attrJoin('class', className);
+  }
+}
+
+/**
+ * Wrap fences and HTML blocks that carry a class in a div, because their default rules do not
+ * render token attributes.
+ */
+function wrapClassedBlocks(md: MarkdownIt): void {
+  for (const rule of WRAPPED_RULES) {
+    const renderDefault = md.renderer.rules[rule];
+    md.renderer.rules[rule] = (tokens, idx, options, env, self) => {
+      const html = renderDefault ? renderDefault(tokens, idx, options, env, self) : '';
+      const className = tokens[idx].attrGet('class');
+      return className ? `<div class="${className}">${html}</div>\n` : html;
+    };
+  }
+}
+
+const HTML_ESCAPES: Readonly<Record<string, string>> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+};
+
+/** Escape text for use in HTML content and attribute values. */
+export function escapeHtml(text: string): string {
+  return text.replace(/[&<>"]/g, (char) => HTML_ESCAPES[char]);
 }
 
 export interface RendererOptions {
@@ -101,12 +217,7 @@ export function createRenderer(options?: RendererOptions): MarkdownRenderer {
         // fall through to default
       }
     }
-    const escaped = str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-    return '<pre class="hljs"><code>' + escaped + '</code></pre>';
+    return '<pre class="hljs"><code>' + escapeHtml(str) + '</code></pre>';
   }
 
   const md = new MarkdownIt({
@@ -120,6 +231,8 @@ export function createRenderer(options?: RendererOptions): MarkdownRenderer {
   // Add GFM plugins
   md.use(taskLists, { enabled: false });
   md.use(footnote);
+  md.use(inPlaceFootnotes);
+  wrapClassedBlocks(md);
 
   return {
     render(markdown: string): string {
@@ -135,6 +248,31 @@ export function createRenderer(options?: RendererOptions): MarkdownRenderer {
       }
       const html = md.render(markdown);
       return resolveImagePaths(html, basePath);
+    },
+
+    createDocumentContext(markdown: string): DocumentContext {
+      return createDocumentContext(md, markdown);
+    },
+
+    renderFragment(fragment: string, context: DocumentContext, marks?: ChangeMarks): string {
+      if (!fragment) {
+        return '';
+      }
+      const env = createFragmentEnv(context);
+      const tokens = md.parse(fragment, env);
+      if (marks) {
+        applyChangedClass(tokens, new Set(marks.lines), marks.className);
+      }
+      return md.renderer.render(tokens, md.options, env);
+    },
+
+    topLevelBlockRanges(markdown: string): LineRange[] {
+      // Parse as a fragment so that footnote definitions stay in place with their lines
+      return md
+        .parse(markdown, createFragmentEnv())
+        .flatMap((token) =>
+          token.level === 0 && token.map ? [{ start: token.map[0], end: token.map[1] }] : [],
+        );
     },
   };
 }

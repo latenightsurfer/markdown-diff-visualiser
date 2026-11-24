@@ -29,18 +29,28 @@ import {
   ColorThemeKind,
   Uri,
   _resetThemeChangeListeners,
+  ExecFileCallback,
+  ExtensionModule,
+  MockCommands,
+  MockExtensionContext,
+  MockOutputChannel,
+  MockTextEditor,
+  MockWorkspace,
+  GitErrorConstructor,
 } from './mocks/vscode';
+import type { GitService } from '../gitService';
+import type { PanelManager } from '../webviewPanelManager';
 
 const proxyquire = require('proxyquire').noCallThru();
 
 describe('Error Handling Paths', function () {
   // --- Stubs for internal modules ---
-  let mockGitServiceInstance: any;
+  let mockGitServiceInstance: Record<keyof GitService, sinon.SinonStub>;
   let createGitServiceStub: sinon.SinonStub;
   let parseDiffStub: sinon.SinonStub;
   let reconstructContentStub: sinon.SinonStub;
   let highlightDiffStub: sinon.SinonStub;
-  let mockPanelManagerInstance: any;
+  let mockPanelManagerInstance: Record<keyof PanelManager, sinon.SinonStub>;
   let createPanelManagerStub: sinon.SinonStub;
 
   // --- child_process mock ---
@@ -50,17 +60,17 @@ describe('Error Handling Paths', function () {
   let createTwoFilesPatchStub: sinon.SinonStub;
 
   // --- VS Code mocks ---
-  let mockContext: any;
+  let mockContext: MockExtensionContext;
   let registeredCommands: Record<string, Function>;
-  let mockOutputChannel: any;
-  let workspaceMock: any;
-  let commandsMock: any;
+  let mockOutputChannel: MockOutputChannel;
+  let workspaceMock: MockWorkspace;
+  let commandsMock: MockCommands;
 
   // The module under test, loaded fresh per test
-  let extensionModule: any;
+  let extensionModule: ExtensionModule;
 
   // GitError class used in mocks
-  let GitErrorClass: any;
+  let GitErrorClass: GitErrorConstructor;
 
   /**
    * Build a fresh vscode mock and load the extension module via proxyquire.
@@ -136,7 +146,7 @@ describe('Error Handling Paths', function () {
     const vscodeMock = {
       window: {
         ...mockWindow,
-        activeTextEditor: undefined as any,
+        activeTextEditor: undefined as MockTextEditor | undefined,
         createOutputChannel: sinon.stub().returns(mockOutputChannel),
       },
       commands: commandsMock,
@@ -214,7 +224,7 @@ describe('Error Handling Paths', function () {
 
       // findGitRoot fails (execFile for rev-parse returns error)
       execFileStub.callsFake(
-        (_cmd: string, args: string[], _opts: any, callback: Function) => {
+        (_cmd: string, args: string[], _opts: unknown, callback: ExecFileCallback) => {
           if (args[0] === 'rev-parse') {
             callback(new Error('fatal: not a git repository'), '', 'fatal: not a git repository');
           } else {
@@ -248,7 +258,7 @@ describe('Error Handling Paths', function () {
       // First call succeeds (for showChanges → runVersionComparison)
       // Set up successful initial flow
       execFileStub.callsFake(
-        (_cmd: string, args: string[], _opts: any, callback: Function) => {
+        (_cmd: string, args: string[], _opts: unknown, callback: ExecFileCallback) => {
           if (args[0] === 'rev-parse') {
             callback(null, '/mock/workspace\n', '');
           } else if (args[0] === 'show') {
@@ -304,7 +314,7 @@ describe('Error Handling Paths', function () {
 
       // Set up successful initial flow
       execFileStub.callsFake(
-        (_cmd: string, args: string[], _opts: any, callback: Function) => {
+        (_cmd: string, args: string[], _opts: unknown, callback: ExecFileCallback) => {
           if (args[0] === 'rev-parse') {
             callback(null, '/mock/workspace\n', '');
           } else if (args[0] === 'show') {
@@ -345,7 +355,7 @@ describe('Error Handling Paths', function () {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(mockWindow.showInformationMessage.called).to.be.true;
-      const infoMessages = mockWindow.showInformationMessage.getCalls().map((c: any) => c.args[0]);
+      const infoMessages = mockWindow.showInformationMessage.getCalls().map((c) => c.args[0]);
       const hasNotTrackedMsg = infoMessages.some((msg: string) => msg.includes('not tracked'));
       expect(hasNotTrackedMsg).to.be.true;
     });
@@ -363,7 +373,7 @@ describe('Error Handling Paths', function () {
 
       // findGitRoot succeeds
       execFileStub.callsFake(
-        (_cmd: string, args: string[], _opts: any, callback: Function) => {
+        (_cmd: string, args: string[], _opts: unknown, callback: ExecFileCallback) => {
           if (args[0] === 'rev-parse') {
             callback(null, '/mock/workspace\n', '');
           } else if (args[0] === 'show') {
@@ -409,7 +419,7 @@ describe('Error Handling Paths', function () {
 
       // findGitRoot succeeds
       execFileStub.callsFake(
-        (_cmd: string, args: string[], _opts: any, callback: Function) => {
+        (_cmd: string, args: string[], _opts: unknown, callback: ExecFileCallback) => {
           if (args[0] === 'rev-parse') {
             callback(null, '/mock/workspace\n', '');
           } else if (args[0] === 'show') {
@@ -471,7 +481,7 @@ describe('Error Handling Paths', function () {
       expect(previewData.newHtml).to.include('# Current Content');
 
       // Should log the rendering error
-      const logCalls = mockOutputChannel.appendLine.getCalls().map((c: any) => c.args[0]);
+      const logCalls = mockOutputChannel.appendLine.getCalls().map((c) => c.args[0]);
       const hasRenderErrorLog = logCalls.some(
         (msg: string) =>
           msg.includes('Rendering error') && msg.includes('Rendering engine failure'),
@@ -493,7 +503,7 @@ describe('Error Handling Paths', function () {
 
       // findGitRoot succeeds
       execFileStub.callsFake(
-        (_cmd: string, args: string[], _opts: any, callback: Function) => {
+        (_cmd: string, args: string[], _opts: unknown, callback: ExecFileCallback) => {
           if (args[0] === 'rev-parse') {
             callback(null, '/mock/workspace\n', '');
           } else if (args[0] === 'show') {

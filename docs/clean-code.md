@@ -5,7 +5,8 @@ C# / .NET clean-code guideline to the structure and idioms of this project. Appl
 change made by humans and AI agents.
 
 New and changed code must follow these rules. Existing code that does not is cleaned up only
-within the scope of a change (see Boy Scout Rule), larger clean-ups become their own task.
+within the scope of a change (see section 9, Boy Scout Rule), larger clean-ups become their own
+task.
 
 ## 0. Architecture of this repository
 
@@ -66,38 +67,52 @@ The simplest solution that correctly solves the problem is the right one.
 
 Implement only what is needed now. No speculative abstractions, options or configuration settings.
 
-## 6. Additional principles
+## 6. Separation of Concerns
 
-- **Separation of Concerns**: git access, file access, markdown rendering, diff computation,
-  webview messaging and UI code live in separate modules (see section 0).
-- **Law of Demeter**: talk only to immediate collaborators (parameters, locals, own module, injected
-  dependencies). No `a.getB().getC().doD()`. Exempt: fluent builders, array method chains
-  (`map`/`filter`/`reduce`) and VS Code API namespaces (`vscode.workspace.fs.readFile`).
-- **Principle of Least Astonishment**: names and signatures do not hide side effects. `get…` does
-  not mutate, `is…`/`has…` return `boolean` without side effects, `try…` does not throw for its
-  expected failure case (return `undefined` or a result object). No behaviour-switching `boolean`
-  parameters: use a string-literal union or two functions.
-- **Boy Scout Rule**: leave code cleaner than found, but only small, safe improvements within the
-  scope of the current change. Larger clean-ups become their own task.
-- **CUPID** (design smell check, not a checklist): Composable, Unix philosophy (one thing well),
-  Predictable, Idiomatic (repo conventions), Domain-based names (hunk, block, version, diff mode).
-- **GRASP**: Information Expert (the module that owns the data does the work), Creator (the owner
-  of objects creates them), Controller (`extension.ts` coordinates requests), Low Coupling / High
-  Cohesion.
+Git access, file access, markdown rendering, diff computation, webview messaging and UI code live
+in separate modules (see section 0).
 
-## 7. Function design
+## 7. Law of Demeter
+
+Talk only to immediate collaborators (parameters, locals, own module, injected dependencies). No
+`a.getB().getC().doD()`. Exempt: fluent builders, array method chains (`map`/`filter`/`reduce`)
+and VS Code API namespaces (`vscode.workspace.fs.readFile`).
+
+## 8. Principle of Least Astonishment
+
+Names and signatures do not hide side effects. `get…` does not mutate, `is…`/`has…` return
+`boolean` without side effects, `try…` does not throw for its expected failure case (return
+`undefined` or a result object). No behaviour-switching `boolean` parameters: use a string-literal
+union or two functions.
+
+## 9. Boy Scout Rule
+
+Leave code cleaner than found, but only small, safe improvements within the scope of the current
+change. Larger clean-ups become their own task.
+
+## 10. CUPID
+
+A design smell check, not a checklist: Composable, Unix philosophy (one thing well), Predictable,
+Idiomatic (repo conventions), Domain-based names (hunk, block, version, diff mode).
+
+## 11. GRASP
+
+Information Expert (the module that owns the data does the work), Creator (the owner of objects
+creates them), Controller (`extension.ts` coordinates requests), Low Coupling / High Cohesion.
+
+## 12. Function design
 
 - One thing per function, at most 20–25 lines. Extract when longer.
 - Guard clauses: return early on invalid input, avoid deep nesting.
 - Prefer a parameter object over more than three positional parameters.
 
-## 8. No magic numbers or strings
+## 13. No magic numbers or strings
 
 Named module-level constants in `UPPER_SNAKE_CASE` instead of inline literals, as in
 `const LARGE_FILE_LINE_THRESHOLD = 50_000;`. CSS class names shared between extension and webview
 are defined once and reused.
 
-## 9. Immutability
+## 14. Immutability
 
 | Use case                     | Form                                                            |
 | ---------------------------- | --------------------------------------------------------------- |
@@ -109,12 +124,12 @@ are defined once and reused.
 Local mutation inside a function (building an array with `push`) is fine as long as it does not
 leak. Module-level mutable state is limited to the controller (`extension.ts`) and adapters.
 
-## 10. Helper functions instead of extension methods
+## 15. Helper functions instead of extension methods
 
 No prototype extension. Pure transformations are plain exported functions in a core module, without
 I/O or `vscode` dependencies.
 
-## 11. Delete, don't deprecate
+## 16. Delete, don't deprecate
 
 Never add `@deprecated` tags, "legacy" markers or commented-out code. Unused function or type:
 delete it and its tests. Changing a signature: migrate every caller in the same change, then delete
@@ -122,7 +137,7 @@ the old one. User-facing contracts (command IDs and menus in `package.json`, the
 protocol between `extension.ts` and `main.js`) are changed in both places in the same change.
 Renaming a command ID breaks user keybindings: ask first.
 
-## 12. Errors, types and lint
+## 17. Errors, types and lint
 
 - `strict` TypeScript. No `any` (use `unknown` and narrow), no non-null assertion `!` to silence
   the compiler, no null checks the type system already rules out.
@@ -133,7 +148,7 @@ Renaming a command ID breaks user keybindings: ask first.
 - If an operation receives a `CancellationToken`, let cancellation propagate instead of catching it.
 - Every `eslint-disable` comment names the rule and a justification on the same line.
 
-## 13. Project-specific rules
+## 18. Project-specific rules
 
 - Git is called only through `child_process.execFile`, never `exec` (no shell injection).
 - Text read from different sources (git blobs, working tree) is normalised before comparison
@@ -143,7 +158,7 @@ Renaming a command ID breaks user keybindings: ask first.
 - Every VS Code `Disposable` is registered with `context.subscriptions`.
 - `npm test`, `npm run lint` and `npm run format:check` pass before every commit.
 
-## 14. Testing
+## 19. Testing
 
 Every change is covered by automated tests (Mocha + Chai, `src/test/**/*.test.ts`, all run with
 `npm test`). Every bug fix gets a regression test that fails without the fix.

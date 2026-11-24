@@ -101,7 +101,7 @@
     "parse-diff": "^0.11.1"
   },
   "overrides": {
-    "serialize-javascript": ">=7.0.5"
+    "serialize-javascript": ">=7.1.4"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

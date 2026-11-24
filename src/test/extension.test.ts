@@ -21,18 +21,27 @@ import {
   ViewColumn,
   ColorThemeKind,
   Uri,
+  ExecFileCallback,
+  ExtensionModule,
+  MockCommands,
+  MockExtensionContext,
+  MockOutputChannel,
+  MockTextEditor,
+  MockWorkspace,
 } from './mocks/vscode';
+import type { GitService } from '../gitService';
+import type { PanelManager } from '../webviewPanelManager';
 
 const proxyquire = require('proxyquire').noCallThru();
 
 describe('Extension Controller', function () {
   // --- Stubs for internal modules ---
-  let mockGitServiceInstance: any;
+  let mockGitServiceInstance: Record<keyof GitService, sinon.SinonStub>;
   let createGitServiceStub: sinon.SinonStub;
   let parseDiffStub: sinon.SinonStub;
   let reconstructContentStub: sinon.SinonStub;
   let highlightDiffStub: sinon.SinonStub;
-  let mockPanelManagerInstance: any;
+  let mockPanelManagerInstance: Record<keyof PanelManager, sinon.SinonStub>;
   let createPanelManagerStub: sinon.SinonStub;
 
   // --- child_process mock ---
@@ -42,19 +51,19 @@ describe('Extension Controller', function () {
   let createTwoFilesPatchStub: sinon.SinonStub;
 
   // --- VS Code mocks ---
-  let mockContext: any;
+  let mockContext: MockExtensionContext;
   let registeredCommands: Record<string, Function>;
   let fileWatcherOnDidChange: sinon.SinonStub;
   let fileWatcherOnDidCreate: sinon.SinonStub;
   let fileWatcherDispose: sinon.SinonStub;
-  let mockOutputChannel: any;
+  let mockOutputChannel: MockOutputChannel;
 
   // --- Workspace mocks ---
-  let workspaceMock: any;
-  let commandsMock: any;
+  let workspaceMock: MockWorkspace;
+  let commandsMock: MockCommands;
 
   // The module under test, loaded fresh per test
-  let extensionModule: any;
+  let extensionModule: ExtensionModule;
 
   /**
    * Build a fresh vscode mock and load the extension module via proxyquire.
@@ -134,7 +143,7 @@ describe('Extension Controller', function () {
     const vscodeMock = {
       window: {
         ...mockWindow,
-        activeTextEditor: undefined as any,
+        activeTextEditor: undefined as MockTextEditor | undefined,
         createOutputChannel: sinon.stub().returns(mockOutputChannel),
       },
       commands: commandsMock,
@@ -216,11 +225,15 @@ describe('Extension Controller', function () {
 
     // Mock execFile for findGitRoot and getFileAtVersion('committed')
     execFileStub.callsFake(
-      (_cmd: string, args: string[], _opts: any, callback: Function) => {
+      (_cmd: string, args: string[], _opts: unknown, callback: ExecFileCallback) => {
         if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
           // findGitRoot
           callback(null, '/mock/workspace\n', '');
-        } else if (args[0] === 'show' && typeof args[1] === 'string' && args[1].startsWith('HEAD:')) {
+        } else if (
+          args[0] === 'show' &&
+          typeof args[1] === 'string' &&
+          args[1].startsWith('HEAD:')
+        ) {
           // getFileAtVersion('committed')
           callback(null, committedContent, '');
         } else {
@@ -233,8 +246,7 @@ describe('Extension Controller', function () {
     workspaceMock.fs.readFile.resolves(Buffer.from(unstagedContent));
 
     // Mock diff library
-    const rawPatch =
-      `diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1,3 @@\n-# Old Content\n+# Current Content\n+\n+Some text.\n`;
+    const rawPatch = `diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1,3 @@\n-# Old Content\n+# Current Content\n+\n+Some text.\n`;
     createTwoFilesPatchStub.returns(rawPatch);
 
     // Mock parseDiff
@@ -343,7 +355,7 @@ describe('Extension Controller', function () {
 
       // findGitRoot succeeds
       execFileStub.callsFake(
-        (_cmd: string, args: string[], _opts: any, callback: Function) => {
+        (_cmd: string, args: string[], _opts: unknown, callback: ExecFileCallback) => {
           if (args[0] === 'rev-parse') {
             callback(null, '/mock/workspace\n', '');
           } else if (args[0] === 'show') {
@@ -377,7 +389,7 @@ describe('Extension Controller', function () {
 
       // findGitRoot succeeds
       execFileStub.callsFake(
-        (_cmd: string, args: string[], _opts: any, callback: Function) => {
+        (_cmd: string, args: string[], _opts: unknown, callback: ExecFileCallback) => {
           if (args[0] === 'rev-parse') {
             callback(null, '/mock/workspace\n', '');
           } else if (args[0] === 'show') {
@@ -454,15 +466,13 @@ describe('Extension Controller', function () {
       await handler();
 
       // execFile should have been called for findGitRoot (rev-parse)
-      const revParseCall = execFileStub.getCalls().find(
-        (c: any) => c.args[1][0] === 'rev-parse',
-      );
+      const revParseCall = execFileStub.getCalls().find((c) => c.args[1][0] === 'rev-parse');
       expect(revParseCall).to.exist;
 
       // execFile should have been called for getFileAtVersion('committed') with HEAD:
-      const showCall = execFileStub.getCalls().find(
-        (c: any) => c.args[1][0] === 'show' && c.args[1][1].startsWith('HEAD:'),
-      );
+      const showCall = execFileStub
+        .getCalls()
+        .find((c) => c.args[1][0] === 'show' && c.args[1][1].startsWith('HEAD:'));
       expect(showCall).to.exist;
 
       // workspace.fs.readFile should have been called for getFileAtVersion('unstaged')
@@ -673,7 +683,7 @@ describe('Extension Controller', function () {
       await handler();
 
       // Should NOT show the "not markdown" info message
-      const infoMessages = mockWindow.showInformationMessage.getCalls().map((c: any) => c.args[0]);
+      const infoMessages = mockWindow.showInformationMessage.getCalls().map((c) => c.args[0]);
       const hasMarkdownWarning = infoMessages.some((msg: string) => msg.includes('markdown files'));
       expect(hasMarkdownWarning).to.be.false;
 

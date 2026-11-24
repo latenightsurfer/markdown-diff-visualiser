@@ -8,6 +8,7 @@ import * as path from 'path';
 import { createGitService, DiffMode, GitError } from './gitService';
 import { parseDiff, reconstructContent, DiffResult } from './diffParser';
 import { highlightDiff } from './diffHighlighter';
+import { normalizeLineEndings } from './lineEndings';
 import { createPanelManager, PanelManager, WebviewMessage } from './webviewPanelManager';
 import { execFile } from 'child_process';
 import * as diffLib from 'diff';
@@ -102,7 +103,7 @@ async function runPipeline(
   const gitService = createGitService(workspaceRoot, commitSha);
   let rawDiff: string;
   try {
-    rawDiff = await gitService.getDiff(filePath, mode);
+    rawDiff = normalizeLineEndings(await gitService.getDiff(filePath, mode));
   } catch (error) {
     if (error instanceof GitError) {
       switch (error.code) {
@@ -155,7 +156,7 @@ async function runPipeline(
       path.isAbsolute(filePath) ? filePath : path.join(workspaceRoot, filePath),
     );
     const fileBytes = await vscode.workspace.fs.readFile(fileUri);
-    currentContent = Buffer.from(fileBytes).toString('utf-8');
+    currentContent = normalizeLineEndings(Buffer.from(fileBytes).toString('utf-8'));
   } catch {
     // If file doesn't exist (deleted), use empty content
     currentContent = '';
@@ -393,8 +394,11 @@ async function runVersionComparison(
 
   log(`Comparing ${leftVersion} vs ${rightVersion} for "${fileName}"`);
 
-  const leftContent = await getFileAtVersion(filePath, leftVersion, gitRoot);
-  const rightContent = await getFileAtVersion(filePath, rightVersion, gitRoot);
+  // Git blobs and the working tree may differ in line endings (core.autocrlf), see issue #8
+  const leftContent = normalizeLineEndings(await getFileAtVersion(filePath, leftVersion, gitRoot));
+  const rightContent = normalizeLineEndings(
+    await getFileAtVersion(filePath, rightVersion, gitRoot),
+  );
 
   if (leftContent === rightContent) {
     if (!panelManager) {

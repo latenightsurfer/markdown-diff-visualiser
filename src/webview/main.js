@@ -14,6 +14,18 @@
   // Track current diff mode
   let currentMode = 'unstaged';
 
+  // Minimap markers: fully changed blocks and the changed parts of partially changed blocks
+  const REMOVED_MARKERS = '.diff-removed-block:not(.diff-partial), .diff-removed-part';
+  const ADDED_MARKERS = '.diff-added-block:not(.diff-partial), .diff-added-part';
+
+  /**
+   * Vertical position of an element inside the scrollable pane. Unlike offsetTop this also
+   * works for table rows, whose offsetParent is the table.
+   */
+  function offsetInPane(pane, element) {
+    return element.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
+  }
+
   // --- Toolbar with comparison mode dropdown and refresh ---
   function createToolbar() {
     var toolbar = document.createElement('div');
@@ -252,8 +264,8 @@
     // Wait for images to load before aligning and building minimap
     waitForImages(function () {
       alignPanes();
-      buildScrollbarMinimap(oldPane, 'diff-removed-block', 'removed');
-      buildScrollbarMinimap(newPane, 'diff-added-block', 'added');
+      buildScrollbarMinimap(oldPane, REMOVED_MARKERS, 'removed');
+      buildScrollbarMinimap(newPane, ADDED_MARKERS, 'added');
     });
   }
 
@@ -342,7 +354,7 @@
   }
 
   // --- Scrollbar minimap ---
-  function buildScrollbarMinimap(pane, diffClass, type) {
+  function buildScrollbarMinimap(pane, selector, type) {
     if (!pane) return;
 
     var existingMap = pane.parentElement.querySelector(
@@ -350,7 +362,7 @@
     );
     if (existingMap) existingMap.remove();
 
-    var diffBlocks = pane.querySelectorAll('.' + diffClass);
+    var diffBlocks = pane.querySelectorAll(selector);
     if (diffBlocks.length === 0) return;
 
     var totalHeight = pane.scrollHeight;
@@ -362,7 +374,8 @@
 
     for (var i = 0; i < diffBlocks.length; i++) {
       var block = diffBlocks[i];
-      var topPercent = (block.offsetTop / totalHeight) * 100;
+      var blockTop = offsetInPane(pane, block);
+      var topPercent = (blockTop / totalHeight) * 100;
       var heightPercent = Math.max((block.offsetHeight / totalHeight) * 100, 0.8);
 
       var marker = document.createElement('div');
@@ -374,7 +387,7 @@
         marker.addEventListener('click', function () {
           pane.scrollTop = targetTop - pane.clientHeight / 2;
         });
-      })(block.offsetTop);
+      })(blockTop);
 
       minimap.appendChild(marker);
     }

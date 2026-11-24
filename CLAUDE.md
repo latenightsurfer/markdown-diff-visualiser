@@ -8,7 +8,7 @@ This is the **Markdown Diff Visualiser** VS Code extension. It renders markdown 
 
 ```bash
 npm install              # Install deps
-npm test                 # Run 129 tests (Mocha + Chai + fast-check)
+npm test                 # Run all tests (Mocha + Chai + fast-check)
 npm run bundle           # Bundle with esbuild → dist/extension.js
 npm run package          # Bundle + create .vsix
 ```
@@ -24,6 +24,8 @@ Key files:
 - `src/webview/main.js` — scroll alignment, minimap, version dropdown
 
 ## Conventions
+
+Follow the coding guideline in [docs/clean-code.md](docs/clean-code.md) for every code change.
 
 - Use `child_process.execFile` for git commands (never `exec`)
 - Use `findGitRoot()` to detect the correct repo (supports nested repos)

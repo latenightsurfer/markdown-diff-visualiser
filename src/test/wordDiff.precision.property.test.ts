@@ -3,17 +3,16 @@
  *
  * Feature: markdown-diff-visualiser, Property 6: Word-level diff precision
  *
- * For any two non-identical text strings representing a modified block,
- * the word-level diff SHALL annotate only the words that actually differ
- * between the two strings — unchanged words SHALL NOT be wrapped in
- * highlight spans.
+ * For any two non-identical texts (HTML text nodes without markup) representing a modified
+ * block, the word-level diff SHALL annotate only the words that actually differ between the
+ * two texts — unchanged words SHALL NOT be wrapped in highlight spans.
  *
  * **Validates: Requirements 4.4**
  */
 
 import { expect } from 'chai';
 import * as fc from 'fast-check';
-import { computeWordDiff } from '../diffHighlighter';
+import { annotateWordChanges } from '../wordDiff';
 
 /**
  * Strip all HTML span tags (diff-added-word and diff-removed-word) from a string,
@@ -135,7 +134,10 @@ describe('Feature: markdown-diff-visualiser, Property 6: Word-level diff precisi
   it('unchanged text between old and new should not be wrapped in any highlight span', function () {
     fc.assert(
       fc.property(similarPairArb, ([oldText, newText]) => {
-        const { oldAnnotated, newAnnotated } = computeWordDiff(oldText, newText);
+        const { oldHtml: oldAnnotated, newHtml: newAnnotated } = annotateWordChanges(
+          oldText,
+          newText,
+        );
 
         // Property: unchanged segments in the old annotated output must also
         // appear in the original old text (they should not be fabricated)
@@ -169,35 +171,16 @@ describe('Feature: markdown-diff-visualiser, Property 6: Word-level diff precisi
     );
   });
 
-  it('stripping highlight spans from annotated output should recover the original text (HTML-escaped)', function () {
+  it('stripping highlight spans from annotated output should recover the input HTML', function () {
     fc.assert(
       fc.property(diffPairArb, ([oldText, newText]) => {
-        const { oldAnnotated, newAnnotated } = computeWordDiff(oldText, newText);
-
-        // Property: stripping all diff spans from oldAnnotated should yield
-        // the HTML-escaped version of oldText
-        const strippedOld = stripDiffSpans(oldAnnotated);
-        const expectedOld = oldText
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;');
-        expect(strippedOld).to.equal(
-          expectedOld,
-          'Stripping diff spans from old annotated output should recover the HTML-escaped old text',
+        const { oldHtml: oldAnnotated, newHtml: newAnnotated } = annotateWordChanges(
+          oldText,
+          newText,
         );
 
-        // Same for new side
-        const strippedNew = stripDiffSpans(newAnnotated);
-        const expectedNew = newText
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;');
-        expect(strippedNew).to.equal(
-          expectedNew,
-          'Stripping diff spans from new annotated output should recover the HTML-escaped new text',
-        );
+        expect(stripDiffSpans(oldAnnotated)).to.equal(oldText);
+        expect(stripDiffSpans(newAnnotated)).to.equal(newText);
       }),
       {
         numRuns: 100,
@@ -209,7 +192,7 @@ describe('Feature: markdown-diff-visualiser, Property 6: Word-level diff precisi
   it('identical strings should produce no highlight spans at all', function () {
     fc.assert(
       fc.property(sentenceArb, (text) => {
-        const { oldAnnotated, newAnnotated } = computeWordDiff(text, text);
+        const { oldHtml: oldAnnotated, newHtml: newAnnotated } = annotateWordChanges(text, text);
 
         // When old and new are identical, no diff spans should appear
         expect(oldAnnotated).to.not.include('diff-removed-word');
@@ -227,7 +210,10 @@ describe('Feature: markdown-diff-visualiser, Property 6: Word-level diff precisi
   it('non-identical strings should produce at least one highlight span', function () {
     fc.assert(
       fc.property(diffPairArb, ([oldText, newText]) => {
-        const { oldAnnotated, newAnnotated } = computeWordDiff(oldText, newText);
+        const { oldHtml: oldAnnotated, newHtml: newAnnotated } = annotateWordChanges(
+          oldText,
+          newText,
+        );
 
         // When texts differ, at least one side must have a highlight span
         const hasRemovedWord = oldAnnotated.includes('diff-removed-word');
@@ -248,7 +234,10 @@ describe('Feature: markdown-diff-visualiser, Property 6: Word-level diff precisi
   it('concatenated unchanged text should be the same on both old and new sides', function () {
     fc.assert(
       fc.property(similarPairArb, ([oldText, newText]) => {
-        const { oldAnnotated, newAnnotated } = computeWordDiff(oldText, newText);
+        const { oldHtml: oldAnnotated, newHtml: newAnnotated } = annotateWordChanges(
+          oldText,
+          newText,
+        );
 
         // Extract unchanged segments from both sides and join them.
         // The joined unchanged text represents the DIFF_EQUAL portions,

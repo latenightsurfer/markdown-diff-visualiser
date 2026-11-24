@@ -50,6 +50,8 @@ npm run package
 
 ## Code Style
 
+All code changes follow the clean-code rules in [docs/clean-code.md](docs/clean-code.md).
+
 This project uses [ESLint](https://eslint.org/) for linting and [Prettier](https://prettier.io/) for formatting.
 
 - Run the linter:

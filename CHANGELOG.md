@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.1] - 2026-11-27
+
+### Security
+
+- Update `markdown-it` to 14.3.3 and `linkify-it` to 5.0.2, which ship in the extension: fixes
+  several denial-of-service issues (quadratic parsing time on crafted markdown).
+- Update build and test tooling (`esbuild`, `eslint`, `typescript-eslint`, `js-yaml`,
+  `serialize-javascript`, `minimatch`, `brace-expansion`) to versions without known
+  vulnerabilities. `npm audit` reports no vulnerabilities.
+
 ## [0.1.0] - 2026-11-24
 
 First release of this fork of
@@ -50,6 +60,7 @@ First release of this fork of
 - Theme-aware styling (light/dark/high-contrast)
 - Right-click context menu support (editor, explorer, SCM)
 
+[0.1.1]: https://github.com/latenightsurfer/markdown-diff-visualiser/releases/tag/v0.1.1
 [0.1.0]: https://github.com/latenightsurfer/markdown-diff-visualiser/releases/tag/v0.1.0
 [#8]: https://github.com/arjuntic/markdown-diff-visualiser/issues/8
 [#9]: https://github.com/arjuntic/markdown-diff-visualiser/issues/9

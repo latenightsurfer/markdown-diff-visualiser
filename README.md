@@ -63,12 +63,12 @@ The fork is not on the VS Code Marketplace; it is distributed as a `.vsix` file.
 
 ### From a GitHub release
 
-1. Download `markdown-diff-visualiser-0.1.0.vsix` from the
-   [releases page](https://github.com/latenightsurfer/markdown-diff-visualiser/releases).
+1. Download `markdown-diff-visualiser-<version>.vsix` of the
+   [latest release](https://github.com/latenightsurfer/markdown-diff-visualiser/releases/latest).
 2. In VS Code: `Ctrl+Shift+P` (macOS: `Cmd+Shift+P`) → "Extensions: Install from VSIX..."
 3. Select the file and reload the window.
 
-Or from a terminal: `code --install-extension markdown-diff-visualiser-0.1.0.vsix`
+Or from a terminal: `code --install-extension markdown-diff-visualiser-<version>.vsix`
 
 The fork keeps the extension ID of the original (`arjuntic.markdown-diff-visualiser`), so it
 replaces a marketplace installation instead of running next to it. Updates are not installed
@@ -80,8 +80,8 @@ automatically; install the `.vsix` of a new release the same way.
 git clone https://github.com/latenightsurfer/markdown-diff-visualiser.git
 cd markdown-diff-visualiser
 npm install
-npm run package          # bundle and create the .vsix
-code --install-extension markdown-diff-visualiser-0.1.0.vsix
+npm run package          # bundle and create markdown-diff-visualiser-<version>.vsix
+code --install-extension markdown-diff-visualiser-<version>.vsix
 ```
 
 ## Tutorial: Your First Markdown Diff

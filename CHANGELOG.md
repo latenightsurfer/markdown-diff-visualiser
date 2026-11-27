@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.1] - 2026-11-27
 
 ### Security
 
@@ -60,6 +60,7 @@ First release of this fork of
 - Theme-aware styling (light/dark/high-contrast)
 - Right-click context menu support (editor, explorer, SCM)
 
+[0.1.1]: https://github.com/latenightsurfer/markdown-diff-visualiser/releases/tag/v0.1.1
 [0.1.0]: https://github.com/latenightsurfer/markdown-diff-visualiser/releases/tag/v0.1.0
 [#8]: https://github.com/arjuntic/markdown-diff-visualiser/issues/8
 [#9]: https://github.com/arjuntic/markdown-diff-visualiser/issues/9
